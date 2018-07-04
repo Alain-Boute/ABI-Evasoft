@@ -1,0 +1,17 @@
+LIBRARY EVA_dll
+DESCRIPTION "Utility functions for EVA databases"
+EXPORTS
+	DateUnix_to_asc @1
+	Get_object_label @2
+	DB_connect @3
+	Form_txt_search @4
+	Get_field_value @5
+	Get_result_value @6
+	Eval_expression @7
+	Table_add_column @8
+	Date_add @9
+	Get_debug_msg @10
+	Get_table_data @11
+	Calc_pivot_table @12
+	Get_filter_idobj @13
+	Recurse_relations @14
