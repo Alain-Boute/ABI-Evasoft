@@ -21,12 +21,13 @@
 #define ERR_CLEANUP DYNTAB_FREE(ctrltree)
 int ctrl_add_tab(					/* return : 0 on success, other on error */
 	EVA_context *cntxt,				/* in/out : execution context data */
-	unsigned long i_ctrl						/* in : control index in cntxt->form->ctrl */
+	unsigned long i_ctrl			/* in : control index in cntxt->form->ctrl */
 ){
 	EVA_form *form = cntxt->form;
 	EVA_ctrl *ctrl = form->ctrl + i_ctrl;
 	DynTable ctrltree = { 0 };
 	DynBuffer **prev = form->html;
+	int b_left = !strcmp(CTRL_ATTR_VAL(TABS_POS), "_EVA_LEFT");
 
 	/* Read control attributes */
 	CTRL_ATTR(ctrltree, CTRLTREE);
@@ -42,11 +43,18 @@ int ctrl_add_tab(					/* return : 0 on success, other on error */
 		form->tabs[form->nb_tabs - 1] = i_ctrl;
 
 		/* Set fixed values for tabs */
-		ctrl->POSITION = "_EVA_NewLine";
+		ctrl->POSITION = "_EVA_SameColumn";
+		ctrl->LABELPOS = "_EVA_NONE";
 		ctrl->COLSPAN = 0;
 		ctrl->ROWSPAN = 0;
 		if(!ctrl->TABLERULES[0] && !*ctrl->TABLE_STYLE) ctrl->TABLERULES = "none";
-		if(!ctrl->CELL_STYLE[0]) ctrl->CELL_STYLE = !strcmp(ATTR_VAL(form->ctrl, TABS_POS), "_EVA_LEFT") ? "EVATabBorderH" : "EVATabBorderV";
+		if(!ctrl->HEIGHT[0]) ctrl->HEIGHT = CTRL_ATTR_VAL(TABHEIGHT);
+		if(!ctrl->BGCOLOR[0]) ctrl->BGCOLOR = ctrl->TABLEBGCOLOR;
+		if(!ctrl->BGCOLOR[0]) ctrl->BGCOLOR = CTRL_ATTR_VAL(TABBGCOLOR);
+		if(!ctrl->BGCOLOR[0]) ctrl->BGCOLOR = ATTR_VAL(&cntxt->srvfmt, TABBGCOLOR);
+		if(!ctrl->BACKGROUND[0]) ctrl->BACKGROUND = CTRL_ATTR_VAL(TABBACKGROUND);
+		if(!ctrl->BACKGROUND[0]) ctrl->BACKGROUND = ATTR_VAL(&cntxt->srvfmt, TABBACKGROUND);
+		ctrl->ctrlclass = b_left ? "EVA_ContentTabV" : "EVA_ContentTabH";
 
 		/* Handle tab optimization */
 		if(form->opttabid)
@@ -71,17 +79,11 @@ int ctrl_add_tab(					/* return : 0 on success, other on error */
 		ctrl->LABELBOLD = "1";
 		ctrl->TABLEWIDTH = "100%";
 
-		/* Position control & output HTML table header */
-		form->html = &form->html_tab;
-		if(ctrl_format_pos(cntxt, ctrl, 1) ||
-			ctrl_put_table_header(cntxt, ctrl)) STACK_ERROR;
-
 		/* Add lower level controls */
-		CTRL_ADD_CHILD(i_ctrl, &ctrltree);
-
-		/* Output HTML table footer */
-		if(ctrl_put_table_footer(cntxt, ctrl) ||
-			ctrl_format_pos(cntxt, ctrl, 0)) STACK_ERROR;
+		form->html = &form->html_tab;
+		if(cntxt->debug & DEBUG_HTML) DYNBUF_ADD3(form->html, "\n<!--- Start Tab ", ctrl->LABEL, 0, NO_CONV, " -->\n");
+		if(ctrl_add_group(cntxt, i_ctrl)) STACK_ERROR;
+		if(cntxt->debug & DEBUG_HTML) DYNBUF_ADD3(form->html, "\n<!--- End Tab ", ctrl->LABEL, 0, NO_CONV, " -->\n");
 		break;
 
 	case HtmlEdit:
@@ -93,10 +95,12 @@ int ctrl_add_tab(					/* return : 0 on success, other on error */
 		/* If tab is active */
 		if(form->seltab == i_ctrl)
 		{
+			/* Set tab format */
+
 			/* Output lower level controls */
 			form->html = &form->html_tab;
 			if(cntxt->debug & DEBUG_HTML) DYNBUF_ADD3(form->html, "\n<!--- Start Tab ", ctrl->LABEL, 0, NO_CONV, " -->\n");
-			CTRL_ADD_CHILD(i_ctrl, NULL);
+			if(ctrl_add_group(cntxt, i_ctrl)) STACK_ERROR;
 			if(cntxt->debug & DEBUG_HTML) DYNBUF_ADD3(form->html, "\n<!--- End Tab ", ctrl->LABEL, 0, NO_CONV, " -->\n");
 		}
 		else if(!form->opttabid)
@@ -124,20 +128,6 @@ int ctrl_add_tab(					/* return : 0 on success, other on error */
 #undef ERR_CLEANUP
 
 /*********************************************************************
-** Function : ctrl_tab_image
-** Description : get image for a formated tab
-*********************************************************************/
-char *ctrl_tab_image(				/* return : image on success, NULL on error */
-	char *pfx,						/* in : prefix (bg, bot or empty) */
-	char *pos						/* in : image position (left, left_s, mid, mid_sl, mid_sr, right, right_s) */
-){
-	static char img[64];
-	snprintf(add_sz_str(img), "_eva_tab_%s%s%s.gif", pfx ? pfx : "", pfx ? "_" : "", pos);
-
-	return img;
-}
-
-/*********************************************************************
 ** Function : ctrl_add_tab_header
 ** Description : handles header for main TAB controls
 *********************************************************************/
@@ -151,16 +141,12 @@ int ctrl_add_tab_header(			/* return : 0 on success, other on error */
 	DynBuffer *tooltip = NULL;
 	unsigned long i, i_sel = 0;
 	enum { TopBtns, LeftBtns, TopTabs, LeftTabs } dispmode = TopBtns;
-	char *tabcolor;
-	char *imgselbase_l = NULL;
-	char *imgselbase_r = NULL;
-	char *img, *imgsel, *imgbase;
+	int b_top;
+	char *img, *imgsel;
 
 	/* Read form tabs attributes */
 	char *tabsheight = CTRL_ATTR_VAL(TABSHEIGHT);
 	char *tabswidth = CTRL_ATTR_VAL(TABSWIDTH);
-	char *tabsbgcolor = CTRL_ATTR_VAL(TABSBGCOLOR);
-	char *tabsborder = CTRL_ATTR_VAL(TABSBORDER);
 	char *tabspos = CTRL_ATTR_VAL(TABS_POS);
 	int b_left = !strcmp(tabspos, "_EVA_LEFT");
 	char *type = CTRL_ATTR_VAL(TABS_HEADER_MODE);
@@ -183,138 +169,78 @@ int ctrl_add_tab_header(			/* return : 0 on success, other on error */
 	dispmode = (!strcmp(type, "_EVA_TAB") && cntxt->jsenabled) ?
 				b_left ? LeftTabs : TopTabs :
 				b_left ? LeftBtns : TopBtns;
+	b_top = dispmode == TopTabs || dispmode == TopBtns;
 
-	/* Put tabs buttons bar header */
+	/* Put tabs buttons bar DIV header */
 	ctrl = form->ctrl + form->seltab;
-	if(put_html_format_pos(cntxt, "_EVA_NewColumn", rightmenu ? "right" : NULL,
-			b_left ? "top" : "bottom", tabswidth,
-			(dispmode == TopTabs || dispmode == TopBtns) ? tabsheight : NULL,
-			(dispmode == TopTabs || !*tabsbgcolor) ? "FFFFFF" : tabsbgcolor,
-			NULL, 0, 0, NULL, NULL, NULL, NULL, 0, 0, 0, 0, 1))
+	if(put_html_format_pos(cntxt, "_EVA_SameColumn",
+									rightmenu ? "right" : NULL,
+									b_left ? "top" : "bottom",
+									b_top ? "" : tabswidth, NULL, NULL, NULL, 0, 0, NULL, NULL, NULL,
+									b_left ? "EVA_TabsBarV" : "EVA_TabsBarH", 0, 0, 0, 0,
+									b_left ? "float:left;" : "", 1))
 		STACK_ERROR;
-	DYNBUF_ADD3_INT(form->html, "<table border=", atoi(tabsborder), " rules=none cellspacing=0 cellpadding=0");
-	if(b_left) DYNBUF_ADD_STR(form->html, " width=100%");
-	DYNBUF_ADD_STR(form->html, "><tr>");
-	tabcolor = ctrl->BGCOLOR;
-	if(!*tabcolor) tabcolor = "FFFFFF";
 
 	/* Output each tab */
 	for(i = 0; i < form->nb_tabs; i++)
 	{
 		unsigned long i_ctrl = form->tabs[i];
-		int scur = i == i_sel;
-		int sprv = i && i - 1 == i_sel;
-		int snxt = i < form->nb_tabs && i + 1 == i_sel;
+		char *tabcolor;
+		char cls[64];
+		int b_nobr;
+		ctrl = form->ctrl + i_ctrl;
 
 		/* Build tooltip */
-		ctrl = form->ctrl + i_ctrl;
 		M_FREE(tooltip);
-		DYNBUF_ADD3(&tooltip, "[", ctrl->LABEL, 0, NO_CONV, "]");
-		if(ctrl->NOTES && ctrl->NOTES[0]) DYNBUF_ADD3(&tooltip, "\n\n", ctrl->NOTES, 0, NO_CONV, "");
+		DYNBUF_ADD3(&tooltip, "Onglet ", ctrl->LABEL, 0, NO_CONV, "");
 
 		/* Get images */
 		img = CTRL_ATTR_VAL(IMAGE);
 		imgsel = CTRL_ATTR_VAL(IMAGESEL);
+		tabcolor = i == i_sel ? ctrl->LABELBGCOLOR : "FFFFFF";
+		if(!*tabcolor) tabcolor = ctrl->BGCOLOR;
+		sprintf(cls, "EVA_%sTab%s", i == i_sel ? "Selected" : "Unselected", b_top ? "H" : "V");
+		b_nobr = *CTRL_ATTR_VAL(LABEL_NOBR) == '1';
 
 		/* Select display type */
 		switch(dispmode)
 		{
 		case TopTabs:
-			/* Display top tabs : select apropriate image */
-			imgbase = scur ?
-					!i ? "left_s" : "mid_sl" :
-					!i ? "left" : sprv ? "mid_sr" : "mid";
-			if(imgselbase_l && !imgselbase_r) imgselbase_r = imgbase;
-
-			/* Output tab separator */
-			DYNBUF_ADD_STR(form->html, "<td width=1 valign=top");
-			if(scur || sprv || snxt)
-				DYNBUF_ADD3(form->html, " bgcolor=#", tabcolor, 0, NO_CONV, "");
-			DYNBUF_ADD3(form->html, " background='../img/_eva_tab_bg_", imgbase, 0, NO_CONV, ".gif'>");
-			if(put_html_image(cntxt, NULL, ctrl_tab_image(NULL, imgbase), NULL, NULL, NULL, 0)) STACK_ERROR;
-			DYNBUF_ADD_STR(form->html, "</td>");
-
-			/* Output tab itself */
-			if(scur)
-			{
-				/* Selected tab */
-				imgselbase_l = imgbase;
-				if(put_html_format_pos(cntxt, "_EVA_NewColumn", "center",
-						NULL, NULL, NULL, tabcolor, "../img/_eva_tab_bg_s.gif", 
-						0, 0, ctrl->FONTFACE, "+0", NULL, NULL, 1, 0, 0, 0, 1))
-					STACK_ERROR;
-				DYNBUF_ADD3(form->html, "<img src=../img/_eva_nop.gif height=2><br>", ctrl->LABEL, 0, TO_HTML, "");
-				if(ctrl_add_opt_btn(cntxt, ctrl)) STACK_ERROR;
-			}
-			else
-			{
-				/* Other tabs */
-				DYNBUF_ADD3_BUF(form->html, 
-					"<td class=EVAUnselHTab background='../img/_eva_tab_bg.gif' align=center "
-						"onClick=cb('", ctrl->cginame, NO_CONV, "')");
-				DYNBUF_ADD3_BUF(form->html, " title='", tooltip, HTML_TOOLTIP, "'");
-				if(put_showhelp(cntxt, form->html)) STACK_ERROR;
-				DYNBUF_ADD3(form->html, ">", ctrl->LABEL, 0, TO_HTML, "");
-			}
-			DYNBUF_ADD_STR(form->html, "</td>");
-
-			/* Output last tab separator */
-			if(i == form->nb_tabs - 1)
-			{
-				imgbase = scur ? "right_s" : "right";
-				DYNBUF_ADD_STR(form->html, "<td width=1 valign=top");
-				if(scur)
-					DYNBUF_ADD3(form->html, " bgcolor=#", tabcolor, 0, NO_CONV, "");
-				DYNBUF_ADD3(form->html, " background='../img/_eva_tab_bg_", imgbase, 0, NO_CONV, ".gif'>");
-				if(put_html_image(cntxt, NULL, ctrl_tab_image(NULL, imgbase), NULL, NULL, NULL, 0)) STACK_ERROR;
-				DYNBUF_ADD_STR(form->html, "</td></tr><tr>");
-
-				/* Output bottom black line */
-				if(i_sel) DYNBUF_ADD3_INT(form->html, "<td bgcolor=#000000 colspan=", i_sel * 2, "></td>");
-				DYNBUF_ADD3(form->html, "<td bgcolor=#", tabcolor, 0, NO_CONV, ">");
-				if(put_html_image(cntxt, NULL, ctrl_tab_image("bot", imgselbase_l), NULL, NULL, NULL, 0)) STACK_ERROR;
-				DYNBUF_ADD3(form->html, "</td><td bgcolor=#", tabcolor, 0, NO_CONV, "></td>");
-				DYNBUF_ADD3(form->html, "<td bgcolor=#", tabcolor, 0, NO_CONV, ">");
-				if(put_html_image(cntxt, NULL, ctrl_tab_image("bot", imgselbase_r ? imgselbase_r : imgbase), NULL, NULL, NULL, 0)) STACK_ERROR;
-				DYNBUF_ADD_STR(form->html, "</td>");
-				if(i_sel < form->nb_tabs - 1)
-					DYNBUF_ADD3_INT(form->html, "<td bgcolor=#000000 colspan=", (form->nb_tabs - i_sel - 1) * 2, "></td>");
-			}
-			break;
-
 		case LeftTabs:
-			/* Output left tabs */
-			if(i) DYNBUF_ADD_STR(form->html, "</tr><tr>");
-			if(scur)
+			/* Output tab selector enclosed in DIV */
+			if(i == i_sel)
 			{
-				/* Selected tab */
-				DYNBUF_ADD3(form->html, "<td class=EVASelVTab bgcolor=#", tabcolor, 0, TO_HTML, "");
-				DYNBUF_ADD3(form->html, " height=", tabsheight, 0, NO_CONV, ">");
+				/* Selected tab : output inactive tab label & option button */
+				if(put_html_format_pos(cntxt, "_EVA_SameColumn", NULL,
+						NULL, NULL, NULL, tabcolor, ctrl->LABELBACKGROUND, 
+						0, 0, ctrl->LABELFONTFACE, ctrl->LABELFONTSIZE, ctrl->LABELFONTCOLOR, 
+						cls, 1, 0, 0, b_nobr, NULL, 1))
+					STACK_ERROR;
 				DYNBUF_ADD(form->html, ctrl->LABEL, 0, TO_HTML);
 				if(ctrl_add_opt_btn(cntxt, ctrl)) STACK_ERROR;
+				DYNBUF_ADD_STR(form->html, "</div>");
 			}
 			else
 			{
-				/* Other tabs */
-				DYNBUF_ADD3_BUF(form->html, 
-					"<td class=EVAUnselVTab onClick=cb('", ctrl->cginame, NO_CONV, "')");
-				DYNBUF_ADD3_BUF(form->html, " title='", tooltip, HTML_TOOLTIP, "'");
-				if(put_showhelp(cntxt, form->html)) STACK_ERROR;
-				DYNBUF_ADD3(form->html, " height=", tabsheight, 0, NO_CONV, ">");
-				if(put_html_image(cntxt, NULL, "_eva_item.gif", NULL, NULL, NULL, 0)) STACK_ERROR;
-				DYNBUF_ADD(form->html, ctrl->LABEL, 0, TO_HTML);
+				/* Other tabs : output select button */
+				unsigned long k = form->i_ctrl;
+				form->i_ctrl= i_ctrl;
+				if(put_html_button_sz(cntxt, ctrl->cginame->data, ctrl->LABEL, img, imgsel,
+									"Onglet masqué", ctrl->NOTES, NULL,
+									cls, 0, 0, 0, ~0UL, 1024))
+					STACK_ERROR;
+				form->i_ctrl = k;
 			}
-			DYNBUF_ADD_STR(form->html, "</td>");
 			break;
 		
 		case LeftBtns:
 			/* Output left buttons */
-			if(scur)
+			if(i == i_sel)
 			{
 				/* Selected tab */
-				if(put_html_format_pos(cntxt, i ? "_EVA_NewLine" : "_EVA_NewColumn", NULL,
+				if(put_html_format_pos(cntxt, "_EVA_SameColumn", NULL,
 						"middle", NULL, "30", tabcolor, NULL, 
-						2, 0, ctrl->FONTFACE, "+0", NULL, NULL, 1, 0, 0, 0, 1))
+						2, 0, ctrl->FONTFACE, "+0", NULL, NULL, 1, 0, 0, 0, NULL, 1))
 					STACK_ERROR;
 				if(put_html_button(cntxt, ctrl->cginame->data, ctrl->LABEL, imgsel, NULL, tooltip->data, 0, 1)) STACK_ERROR;
 				if(ctrl_add_opt_btn(cntxt, cntxt->form->ctrl + form->seltab)) STACK_ERROR;
@@ -322,35 +248,32 @@ int ctrl_add_tab_header(			/* return : 0 on success, other on error */
 			else
 			{
 				/* Other tabs */
-				DYNBUF_ADD_STR(form->html, "<td>");
+				DYNBUF_ADD3(form->html, "<div class=", cls, 0, NO_CONV, "'>");
 				if(put_html_button(cntxt, ctrl->cginame->data, ctrl->LABEL, img, imgsel, tooltip->data, 0, 0)) STACK_ERROR;
 				DYNBUF_ADD_STR(form->html, "</td><td bgcolor=black width=1>");
 			}
-			DYNBUF_ADD_STR(form->html, "</td></tr><tr><td colspan=2 bgcolor=black height=1></td></tr><tr>");
+			DYNBUF_ADD_STR(form->html, "</div");
 			break;
 		
 		default:
-			DYNBUF_ADD_STR(form->html, "<td>");
+			DYNBUF_ADD3(form->html, "<div class=", cls, 0, NO_CONV, "'>");
 			if(put_html_button(cntxt, 
 					ctrl->cginame->data,
 					ctrl->LABEL,
-					scur ? imgsel : img, 
-					scur ? img : imgsel, 
+					i == i_sel ? imgsel : img, 
+					i == i_sel ? img : imgsel, 
 					tooltip->data,
-					0, scur))
+					0, i == i_sel))
 				STACK_ERROR;
-			DYNBUF_ADD_STR(form->html, "</td>");
-
-			/* Put option button for current tab */
-			if(i == form->nb_tabs - 1)
-			{
-				DYNBUF_ADD_STR(form->html, "<td>");
-				if(ctrl_add_opt_btn(cntxt, cntxt->form->ctrl + form->seltab)) STACK_ERROR;
-				DYNBUF_ADD_STR(form->html, "</td>");
-			}
+			DYNBUF_ADD_STR(form->html, "</div>");
 		}
 	}
-	DYNBUF_ADD_STR(form->html, "</tr></table></td>")
+
+	/* Extra div for bottom line */
+	if(b_top) DYNBUF_ADD_STR(form->html, "<div class=EVA_ContLineTabsH></div>")
+
+	/* Put tabs buttons bar DIV footer */
+	DYNBUF_ADD_STR(form->html, "</div>")
 
 	RETURN_OK_CLEANUP;
 }
@@ -365,12 +288,14 @@ int ctrl_add_tab_header(			/* return : 0 on success, other on error */
 #define ERR_CLEANUP DYNTAB_FREE(ctrltree)
 int ctrl_add_group(					/* return : 0 on success, other on error */
 	EVA_context *cntxt,				/* in/out : execution context data */
-	unsigned long i_ctrl						/* in : control index in cntxt->form->ctrl */
+	unsigned long i_ctrl			/* in : control index in cntxt->form->ctrl */
 ){
 	EVA_form *form = cntxt->form;
 	EVA_ctrl *ctrl = form->ctrl + i_ctrl;
-	char *br_style = CTRL_ATTR_VAL(BORDER_STYLE);
+	char *br_style = ctrl->BORDER_STYLE;
+	char *html_mode = CTRL_ATTR_VAL(HTML_MODE);
 	DynTable ctrltree = { 0 };
+	int b_usediv = cntxt->b_usediv;
 
 	/* Read control attributes */
 	CTRL_ATTR(ctrltree, CTRLTREE);
@@ -391,41 +316,20 @@ int ctrl_add_group(					/* return : 0 on success, other on error */
 		/* Position control */
 		if(ctrl_format_pos(cntxt, ctrl, 1)) STACK_ERROR;
 
-		/* Handle border style : output surrounding table */
-		if(!strcmp(br_style, "_EVA_RoundCorner"))
-		{
-			DYNBUF_ADD_STR(form->html, "<table cellpadding=0 cellspacing=0 border=0");
-			if(!strcmp(ctrl->TABLEWIDTH, "100%")) DYNBUF_ADD_STR(form->html, " width=100%");
-			DYNBUF_ADD_STR(form->html, "><tr><td width=10><img src=/img/bord_tl.gif></td>");
-			DYNBUF_ADD_STR(form->html, "<td background=/img/bord_t.gif align=center></td>");
-			DYNBUF_ADD_STR(form->html, "<td width=10><img src=/img/bord_tr.gif></td></tr>");
-			DYNBUF_ADD_STR(form->html, "<tr><td background=/img/bord_l.gif></td><td>");
-		}
-
-		/* Set default values for groups */
-		if(!ctrl->CELL_STYLE[0] && !ctrl->TABLE_STYLE[0])
-		{
-			if(!ctrl->TABLERULES[0]) ctrl->TABLERULES = "none";
-			if(!CTRL_ATTR_CELL(BORDER)) ctrl->BORDER = 1;
-		}
+		/* Handle border style : deprecated use */
+		if(!strcmp(br_style, "_EVA_RoundCorner") && !ctrl->CELL_STYLE[0]) ctrl->CELL_STYLE = "EVA_RoundCorner";
 
 		/* Output HTML table header */
-		if(ctrl_put_table_header(cntxt, ctrl)) STACK_ERROR;
+		cntxt->b_usediv =	!strcmp(html_mode, "_EVA_DIV") ? 1 :
+							!strcmp(html_mode, "_EVA_DIV_BLOCK") ? 2 : 0;
+		if(!cntxt->b_usediv && ctrl_put_table_header(cntxt, ctrl)) STACK_ERROR;
 
 		/* Add lower level controls */
 		CTRL_ADD_CHILD(i_ctrl, &ctrltree);
 
 		/* Output HTML table footer */
-		if(ctrl_put_table_footer(cntxt, ctrl)) STACK_ERROR;
-
-		/* Handle border style : output surrounding table */
-		if(!strcmp(br_style, "_EVA_RoundCorner"))
-		{
-			DYNBUF_ADD_STR(form->html, "</td><td background=/img/bord_r.gif></td></tr>");
-			DYNBUF_ADD_STR(form->html, "<tr><td><img src=/img/bord_bl.gif></td>");
-			DYNBUF_ADD_STR(form->html, "<td background=/img/bord_b.gif></td>");
-			DYNBUF_ADD_STR(form->html, "<td><img src=/img/bord_br.gif></td></tr></table>");
-		}
+		if(!cntxt->b_usediv && ctrl_put_table_footer(cntxt, ctrl)) STACK_ERROR;
+		cntxt->b_usediv = b_usediv;
 
 		if(ctrl_format_pos(cntxt, ctrl, 0)) STACK_ERROR;
 		break;
@@ -451,17 +355,16 @@ int ctrl_add_menubar(					/* return : 0 on success, other on error */
 	unsigned long i_ctrl						/* in : control index in cntxt->form->ctrl */
 ){
 	EVA_form *form = cntxt->form;
-	EVA_ctrl *ctrl = form->ctrl + i_ctrl;
 	DynBuffer ** html = form->html;
 
 	/* No output in print mode */
 	if(form->step == HtmlPrint) RETURN_OK;
 
 	/* Switch output buffer */
-	if(form->html && (form->step == HtmlEdit || form->step == HtmlView)) form->html = &form->html_menu;
+	if(form->html && (form->step == HtmlEdit || form->step == HtmlView))
+		form->html = &form->html_menu;
 
 	/* Handle as group */
-	if(!ctrl->ROWSPAN) ctrl->ROWSPAN = 3;
 	if(ctrl_add_group(cntxt, i_ctrl)) STACK_ERROR;
 
 	RETURN_OK_CLEANUP;
@@ -899,7 +802,7 @@ int ctrl_add_table(					/* return : 0 on success, other on error */
 	case HtmlPrint:
 	case HtmlView:
 		/* Set default values for tables */
-		if(!CTRL_ATTR_CELL(BORDER)) ctrl->BORDER = 1;
+		if(!ctrl->BORDER[0]) ctrl->BORDER = "1";
 
 		/* Position control & output HTML table header */
 		if(ctrl_format_pos(cntxt, ctrl, 1)) STACK_ERROR;
@@ -921,7 +824,7 @@ int ctrl_add_table(					/* return : 0 on success, other on error */
 				child->LABELPOS = "_EVA_LEFT";
 				if(!child->LABELALIGN[0]) child->LABELALIGN = "left";
 				child->POSITION = "_EVA_NewColumn";
-				if(ctrl_put_label(cntxt, child, "_EVA_NewHeader")) STACK_ERROR;
+				if(ctrl_put_label(cntxt, child, "_EVA_NewHeader", 0)) STACK_ERROR;
 				child->LABELPOS = "_EVA_NONE";
 			}
 		}
@@ -964,11 +867,11 @@ int ctrl_add_table(					/* return : 0 on success, other on error */
 				if(*bgcolor && strlen(bgcolor) == 6) DYNBUF_ADD3(form->html, " bgcolor=#", bgcolor, 6, NO_CONV, "");
 				DYNBUF_ADD_STR(form->html, ">");
 				CTRL_CGINAMEBTN(&name, NULL, add_sz_str("INS"));
-				if(put_html_button_sz(cntxt, name->data, NULL, "_eva_plus.gif", "_eva_plus_s.gif",
-					"Insérer une ligne au dessus", NULL, 0, 0, 0, 0)) STACK_ERROR;
+				if(put_html_button(cntxt, name->data, NULL, "_eva_plus.gif", "_eva_plus_s.gif",
+					"Insérer une ligne au dessus", 0, 0)) STACK_ERROR;
 				CTRL_CGINAMEBTN(&name, NULL, add_sz_str("DEL"));
-				if(put_html_button_sz(cntxt, name->data, NULL, "_eva_cancel.gif", "_eva_cancel_s.gif",
-					"Supprimer la ligne", NULL, 0, 0, 0, 0)) STACK_ERROR;
+				if(put_html_button(cntxt, name->data, NULL, "_eva_cancel.gif", "_eva_cancel_s.gif",
+					"Supprimer la ligne", 0, 0)) STACK_ERROR;
 				DYNBUF_ADD_STR(form->html, "</td>");
 			}
 

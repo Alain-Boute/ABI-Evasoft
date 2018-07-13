@@ -90,8 +90,12 @@ int ctrl_relation_optionslist(			/* return : 0 on success, other on error */
 				/* Standard format : use object title */
 				if(qry_obj_label(cntxt, NULL, NULL, NULL, &val, NULL, NULL, NULL, NULL, 0, &objdata, 0))
 						CLEAR_ERROR;
-			if(!val) DYNBUF_ADD3_INT(&val, "Fiche n° ", idobj, "")
-			else if(val->cnt > 100) val->cnt = 97 + sprintf(val->data + 97, " ...");
+			if(!val &&& idobj)
+			{
+				DYNBUF_ADD3_INT(&val, "Fiche n° ", idobj, "");
+			}
+			else if(val->cnt > 100)
+				val->cnt = 97 + sprintf(val->data + 97, " ...");
 			DYNTAB_ADD_BUF(optlist, i, 1, val);
 		}
 	}
@@ -217,10 +221,10 @@ int ctrl_relation_put_values(		/* return : 0 on success, other on error */
 	DYNBUF_ADD_STR(html, "<table border=0 cellpadding=1 cellspacing=0 rules=none>");
 	if(tbl->lines < ctrl->val.nbrows)
 	{
-		DYNBUF_ADD_STR(html, "<tr bgcolor=#EEEEEE>");
+		DYNBUF_ADD_STR(html, "<tr bgcolor=#EEEEEE><td>");
 		tbl->totlines = ctrl->val.nbrows;
-		if(table_put_page_navigator(cntxt, i_ctrl, 0)) STACK_ERROR;
-		DYNBUF_ADD_STR(html, "</tr>");
+		if(table_put_page_navigator(cntxt, i_ctrl, 26)) STACK_ERROR;
+		DYNBUF_ADD_STR(html, "</td></tr>");
 	}
 	for(i = 0; i < tbl->lines && i + tbl->line < ctrl->val.nbrows; i++) 
 	{

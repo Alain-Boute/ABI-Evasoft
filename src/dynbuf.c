@@ -195,3 +195,20 @@ int dynbuf_add3_int(		/* return : 0 if Ok, other on error */
 		dynbuf_add_int(buf, nb) ||
 		dynbuf_add(buf, txt1, sz1, NO_CONV);
 }
+
+/*********************************************************************
+** Function : dynbuf_concat_ws
+** Description : concat strings in a buffer
+*********************************************************************/
+char *dynbuf_concat_ws(				/* return : buffer contents or NULL if empty */
+	DynBuffer **buf,	 			/* in/out : buffer to concat */
+	char *str1,		 				/* in : string to concat */
+	char *sep,		 				/* in : separator */
+	char *str2		 				/* in : string to concat */
+){
+	if(buf && *buf) (*buf)->cnt = 0;
+	dynbuf_add(buf, str1, 0, NO_CONV);
+	if(str2 && *str2 && str1 && *str1) dynbuf_add(buf, sep, 0, NO_CONV);
+	dynbuf_add(buf, str2, 0, NO_CONV);
+	return (buf && *buf && (*buf)->cnt) ? (*buf)->data : NULL;
+}

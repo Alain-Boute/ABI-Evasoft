@@ -301,7 +301,7 @@ int output_catalog_title(				/* return : 0 on success, other on error */
 	CHECK_HTML_STATUS;
 	CTRL_CGINAMEBTN(&name, NULL, add_sz_str("CLR"));
 	DYNBUF_ADD_STR(html, "<font size=-1>");
-	if(put_html_button_sz(cntxt, name->data, ctrl->LABEL, "_eva_catalog_root.gif", "_eva_catalog_root_s.gif", NULL, NULL, 0, 0, 0, 12))
+	if(put_html_button_sz(cntxt, name->data, ctrl->LABEL, "_eva_catalog_root.gif", "_eva_catalog_root_s.gif", NULL, NULL, NULL, NULL, 0, 0, 0, ~0UL, 12))
 		STACK_ERROR;
 	DYNBUF_ADD_STR(html, "</font>");
 

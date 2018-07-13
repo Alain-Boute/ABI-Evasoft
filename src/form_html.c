@@ -29,7 +29,6 @@ int form_put_html(
 	char *bgcolor;
 	char *background;
 	char *img = NULL;
-	char *cellwidth;
 	DynBuffer *name = NULL;
 	int rightmenu = *DYNTAB_FIELD_VAL(&cntxt->user_data, MENUPOS) == '1';
 
@@ -47,7 +46,7 @@ int form_put_html(
 		if(img) DYNBUF_ADD3(form->html," background='", img, 0, NO_CONV, "'");
 		M_FREE(img);
 		DYNBUF_ADD_STR(form->html, "><tr>");
-		if(ctrl_put_label(cntxt, ctrl, "_EVA_NewColumn")) STACK_ERROR;
+		if(ctrl_put_label(cntxt, ctrl, "_EVA_NewColumn", 0)) STACK_ERROR;
 		DYNBUF_ADD_STR(form->html, 
 			"<td align=right>");
 		if(ctrl_cgi_name(cntxt, ctrl, NULL, 0, &name, 'B', add_sz_str("CLOSE")) ||
@@ -69,7 +68,6 @@ int form_put_html(
 	background = ctrl->TABLEBACKGROUND;
 	if(!*bgcolor) bgcolor = DYNTAB_FIELD_VAL(&cntxt->cnf_data, FORM_BGCOLOR);
 	if(!*background) background = DYNTAB_FIELD_VAL(&cntxt->cnf_data, FORM_BACKGROUND);
-	cellwidth = ctrl->WIDTH;
 
 	/* Handle page title */
 	if(!cntxt->title && !dyntab_cmp(&form->id_form, 0, 0, &cntxt->id_form, 0, 0))
@@ -94,15 +92,18 @@ int form_put_html(
 	/* Output hidden input for selected tab */
 	if(form->tabs && form_tab_selection(cntxt, 0)) STACK_ERROR;
 
-	/* Output form main table header */
-	if(ctrl->FONTFACE[0]) DYNBUF_ADD3(form->html, "<font face='", ctrl->FONTFACE, 0, NO_CONV, "'>");
-	if(put_html_table_header(cntxt, align, ctrl->TABLEWIDTH, ctrl->TABLEHEIGHT, bgcolor, background,
-								0, 0, 0, NULL, NULL, NULL))
+	/* Output form main DIV header */
+	if(put_html_format_pos(cntxt, "_EVA_SameColumn", ctrl->ALIGN, ctrl->VALIGN, ctrl->WIDTH, ctrl->HEIGHT, bgcolor, background, 0, 0,
+								ctrl->FONTFACE, ctrl->FONTSIZE, ctrl->FONTCOLOR, 
+								dynbuf_concat_ws(&name, "EVA_Form", " ", ctrl->CELL_STYLE), 0, 0, 0, 0, NULL, 1))
 		STACK_ERROR;
 
-	/* Output form title */
-	if(form->html_title) DYNBUF_ADD3_BUF(form->html, "<td colspan=2>",form->html_title, NO_CONV, "</td></tr><tr>")
-	M_FREE(form->html_title);
+	/* Output form title as HEADER */
+	if(form->html_title)
+	{
+		DYNBUF_ADD3_BUF(form->html, "<header class=EVA_Title>",form->html_title, NO_CONV, "</header>")
+		M_FREE(form->html_title);
+	}
 
 	switch(form->step)
 	{
@@ -120,87 +121,59 @@ int form_put_html(
 
 	case HtmlSaveDlg:
 		/* Output dialog */
-		DYNBUF_ADD3_BUF(form->html, "<td><font face=Arial><b>", form->html_top, NO_CONV, "</font></td>");
+		DYNBUF_ADD3_BUF(form->html, "<div class=EvaFormSaveDlg>", form->html_top, NO_CONV, "</div>");
 		break;
 
 	default:
-		/* Output form menu */
+		/* Output form menu as DIV containing menu form & tabs  */
 		if(form->html_menu)
 		{
-			if(!rightmenu) DYNBUF_ADD_BUF(form->html, form->html_menu, NO_CONV);
-			DYNBUF_ADD_STR(form->html, "<td valign=top>")
-			if(put_html_table_header(cntxt, NULL, ctrl->TABLEWIDTH, 0, NULL, NULL, 0, 0, 0, NULL, NULL, NULL)) STACK_ERROR;
+			/* Output form body as SECTION */
+			DYNBUF_ADD3(form->html, "<section class=EVA_FormBody", rightmenu? " style='float:right;'" : NULL, 0, NO_CONV, ">");
+
+			/* Output left menu as DIV */
+			if(!rightmenu) DYNBUF_ADD3_BUF(form->html, "<div class=EVA_MenuBar>", form->html_menu, NO_CONV, "</div>");
+
+			/* Output ARTICLE for content + tabs */
+			DYNBUF_ADD_STR(form->html, "<article class=EVA_FormContent>");
 		}
 
 		/* Output form top controls */
 		if(form->html_top)
 		{
-			ctrl->BORDER = atoi(CTRL_ATTR_VAL(INNERBORDER));
-			ctrl->WIDTH = "";
-			ctrl->VALIGN = "top";
-			if(ctrl_format_pos(cntxt, ctrl, 1) ||
-				put_html_table_header(cntxt, NULL, cellwidth, ctrl->HEIGHT, NULL, NULL, 
+			DYNBUF_ADD_STR(form->html, "<div class=EVA_FormTopContent>");
+			if(put_html_table_header(cntxt, NULL, ctrl->WIDTH, ctrl->HEIGHT, NULL, NULL, NULL,
 								atoi(CTRL_ATTR_VAL(CELLSPACING)), 
-								atoi(CTRL_ATTR_VAL(CELLPADDING)), ctrl->BORDER, ctrl->TABLERULES, ctrl->TABLE_STYLE, NULL))
+								atoi(CTRL_ATTR_VAL(CELLPADDING)), ctrl->BORDER, ctrl->TABLERULES, ctrl->TABLE_STYLE, NULL, NULL))
 				STACK_ERROR;
 			DYNBUF_ADD3_BUF(form->html, "", form->html_top, NO_CONV, "</tr></table>")
-			if(ctrl_format_pos(cntxt, ctrl, 0)) STACK_ERROR;
+			DYNBUF_ADD_STR(form->html, "</div>");
 		}
  
 		/* Output tabs buttons bar & contents if applicable */
 		if(form->tabs)
 		{
-			/* Set control with form tab attributes */
-			int b_left = !strcmp(CTRL_ATTR_VAL(TABS_POS), "_EVA_LEFT");
-			EVA_ctrl *tab = form->ctrl + form->seltab;
-			if(!tab->HEIGHT[0]) tab->HEIGHT = CTRL_ATTR_VAL(TABHEIGHT);
-			if(!tab->BGCOLOR[0]) tab->BGCOLOR = tab->TABLEBGCOLOR;
-			if(!tab->BGCOLOR[0]) tab->BGCOLOR = CTRL_ATTR_VAL(TABBGCOLOR);
-			if(!tab->BGCOLOR[0]) tab->BGCOLOR = ATTR_VAL(&cntxt->srvfmt, TABBGCOLOR);
-			tab->TABLEBGCOLOR = "";
-			if(!tab->BACKGROUND[0]) tab->BACKGROUND = CTRL_ATTR_VAL(TABBACKGROUND);
-			if(!tab->BACKGROUND[0]) tab->BACKGROUND = ATTR_VAL(&cntxt->srvfmt, TABBACKGROUND);
-			tab->POSITION = b_left ? "_EVA_NewColumn" : "_EVA_NewLine";
-			tab->VALIGN = "top";
-			tab->LABELPOS = "_EVA_NONE";
-
 			/* Output tabs header if not print mode */
-			if(form->html_top) DYNBUF_ADD_STR(form->html, "</tr><tr>")
-			if(form->step != HtmlPrint)
-			{
-				if(b_left) DYNBUF_ADD_STR(form->html, "<td colspan=2 bgcolor=black height=1></td>"
-													"</tr><tr><td colspan=2><table cellpadding=0 cellspacing=0 border=0 width=100%><tr>");
-				if(ctrl_add_tab_header(cntxt)) STACK_ERROR;
-			}
-			
-			/* Put tab contents & footer */
-			if(form->html_tab)
-			{
-				if(ctrl_format_pos(cntxt, tab, 1) || ctrl_put_table_header(cntxt, tab)) STACK_ERROR;
-				DYNBUF_ADD3_BUF(form->html, "", form->html_tab, NO_CONV, "</tr></table>");
-			}
-			if(ctrl_format_pos(cntxt, ctrl, 0)) STACK_ERROR;
-			if(form->step != HtmlPrint && b_left) DYNBUF_ADD_STR(form->html, "</tr></table></td>");
-		}
-		if(form->html_menu)
-		{
-			DYNBUF_ADD_STR(form->html, "</tr></table></td>");
-			if(rightmenu) DYNBUF_ADD_BUF(form->html, form->html_menu, NO_CONV);
+			if(form->step != HtmlPrint && ctrl_add_tab_header(cntxt)) STACK_ERROR;
+
+			/* Put select tab contents */
+			DYNBUF_ADD_BUF(form->html, form->html_tab, NO_CONV);
 		}
 	}
 
-	/* Output form table footer */
+	/* Output ARTICLE & SECTION footer if menu used */
+	if(form->html_menu)
 	{
-		DynBuffer *b = *form->html;
-		char *txt = b ? b->data : NULL;
-		size_t len = b ? b->cnt : 0;
-		if(txt && len > 3 && !strncmp(txt + len - 4, "<tr>", 4))
-			b->cnt -= 4;
-		else
-			DYNBUF_ADD_STR(form->html, "</tr>");
+		DYNBUF_ADD_STR(form->html, "</article>");
+
+		/* Output right menu as NAV */
+		if(rightmenu) DYNBUF_ADD3_BUF(form->html, "<nav class=EVA_MenuBar>", form->html_menu, NO_CONV, "</nav>");
+
+		DYNBUF_ADD_STR(form->html, "</section>");
 	}
-	DYNBUF_ADD_STR(form->html, "</table>");
-	if(ctrl->FONTFACE[0]) DYNBUF_ADD_STR(form->html, "</font>");
+
+	/* End form body DIV  */
+	DYNBUF_ADD_STR(form->html, "</div>");
 
 	/* Output HTML debug info if applicable */
 	if(cntxt->debug & DEBUG_HTML)

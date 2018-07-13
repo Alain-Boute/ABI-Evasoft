@@ -170,7 +170,7 @@ int main(int argc, char **argv, char **envp)
 		else
 		{
 			debug_put_cgi(cntxt);
-			if(cntxt->htmlhidden) cntxt->txsize += printf("%s", cntxt->htmlhidden->data);
+			if(cntxt->htmlhidden) cntxt->txsize += printf("<span id=EVA_HiddenInputs>\n%s\n</span>\n", cntxt->htmlhidden->data);
 			if(cntxt->html0) cntxt->txsize += printf("%s", cntxt->html0->data);
 			if(cntxt->html) cntxt->txsize += printf("%s", cntxt->html->data);
 			if(cntxt->html1) cntxt->txsize += printf("%s", cntxt->html1->data);

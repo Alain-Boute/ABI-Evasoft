@@ -514,7 +514,7 @@ int ctrl_output_exprval(			/* return : 0 on success, other on error */
 			if(qry_obj_label(cntxt, &expr, NULL, NULL, &expr, &expr, NULL, NULL, NULL, idform, &cntxt->user_data, 0)) CLEAR_ERROR;
 			build_open_btn_name(cntxt, opname, idform, cntxt->user_data.cell->IdObj, 0, 0);
 			if(put_html_button_sz(cntxt, opname, DYNTAB_FIELD_VAL(&cntxt->user_data, USERNAME),
-									NULL, NULL, expr->data, NULL, 0, 0, 0, 32)) STACK_ERROR;
+									NULL, NULL, expr->data, NULL, NULL, NULL, 0, 0, 0, cntxt->user_data.cell->IdObj, 32)) STACK_ERROR;
 		}
 		else
 		{

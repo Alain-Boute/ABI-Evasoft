@@ -1142,7 +1142,7 @@ int ctrl_output_calendar(			/* return : 0 on success, other on error */
 	if(ctrl_get_calendar_input(cntxt, cl->i_ctrl, cl->ctldate, cl->datebeg, &cl->unit, &cl->periods)) STACK_ERROR;
 	sprintf(cl->datecal, "%.8s", cl->datebeg);
 	strcpy(cl->date0, cl->datecal);
-	if(!strncmp(cl->unit, add_sz_str("_EVA_YEAR"))) ctrl->BORDER = 0;
+	if(!strncmp(cl->unit, add_sz_str("_EVA_YEAR"))) ctrl->BORDER = "0";
 	if(ctrl_output_calendar_read(cntxt, cl)) STACK_ERROR;
 	cl->wemode = CTRL_ATTR_VAL(WEEKEND);
 	cl->webgcolor = CTRL_ATTR_VAL(WEEKEND_BGCOLOR);
@@ -1198,7 +1198,7 @@ int ctrl_add_output_calendar(		/* return : 0 on success, other on error */
 	case HtmlPrint:
 	case HtmlView:
 		/* Set default parameters */
-		if(!CTRL_ATTR_CELL(BORDER)) ctrl->BORDER = 1;
+		if(!ctrl->BORDER[0]) ctrl->BORDER = "1";
 		cl.i_ctrl = i_ctrl;
 
 		/* Output headers & calendar */

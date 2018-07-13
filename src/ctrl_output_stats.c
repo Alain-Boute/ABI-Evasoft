@@ -960,7 +960,7 @@ int ctrl_calc_output_pvtres(		/* return : 0 on success, other on error */
 	if(pv->exportparams) pv->b_stackcols = 0;
 
 	/* Output table header */
-	if(!(ctrl->TABLE_STYLE && *ctrl->TABLE_STYLE)) ctrl->BORDER = 1;
+	if(!(ctrl->TABLE_STYLE && *ctrl->TABLE_STYLE)) ctrl->BORDER = "1";
 	if(table_read_controls(cntxt, i_ctrl, NULL) ||
 		ctrl_put_table_header(cntxt, ctrl)) STACK_ERROR;
 

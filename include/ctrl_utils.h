@@ -303,7 +303,8 @@ int ctrl_add_opt_btn(
 int ctrl_put_label(
 	EVA_context *cntxt,			/* in/out : execution context data */
 	EVA_ctrl *ctrl,	 			/* in : input control to process */
-	char *position				/* in : cell position */
+	char *position,				/* in : cell position */
+	int b_div	 				/* in : output enclosing DIV if 1 */
 );
 
 /*********************************************************************
@@ -435,7 +436,8 @@ int html_put_open_btn(					/* return : 0 on success, other on error */
 	unsigned long id_form,				/* in : form id to open */
 	unsigned long id_obj,				/* in : object id to open */
 	int loc,							/* in : opened window location */
-	int b_disabled,						/* in : button is disabled if not 0 */
+	char *style,						/* in : CSS class for button */
+	int htmode,							/* in : mode for put_html_button */
 	int mode							/* in : open mode */
 );
 

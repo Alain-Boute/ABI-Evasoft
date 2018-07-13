@@ -419,8 +419,8 @@ int ctrl_check_error_status(		/* return : 0 on success, other on error */
 ** Description : output HTML code for the 'input options' button of a control
 *********************************************************************/
 #define ERR_FUNCTION "ctrl_add_opt_btn"
-#define ERR_CLEANUP M_FREE(tooltip); \
-					M_FREE(cginame); \
+#define ERR_CLEANUP M_FREE(cginame); \
+					M_FREE(label); \
 					M_FREE(image); \
 					M_FREE(imgsel)
 int ctrl_add_opt_btn(
@@ -428,20 +428,19 @@ int ctrl_add_opt_btn(
 	EVA_ctrl *ctrl	 			/* in : input control to process */
 ){
 	EVA_form *form = cntxt->form;
-	DynBuffer *tooltip = NULL;
 	DynBuffer *cginame = NULL;
+	DynBuffer *label = NULL;
 	DynBuffer *image = NULL;
 	DynBuffer *imgsel = NULL;
 	int b_button = cntxt->opt_btn_mode == OptBtn_OpenSame || cntxt->opt_btn_mode ==  OptBtn_OpenBottom;
 
+	/* Do not output if not applicable */
 	if(form->step == HtmlPrint) RETURN_OK;
 	if(STRCMPNUL(ctrl->OPTIONBUTTON, "_EVA_ALWAYS") && !b_button && !ctrl->error && (
 		!STRCMPNUL(ctrl->OPTIONBUTTON, "_EVA_NONE") ||
 		!(ctrl->NOTES && *ctrl->NOTES) ||
 		!STRCMPNUL(ctrl->OPTIONBUTTON, "_EVA_EDIT") && form && form->step != HtmlEdit))
 		RETURN_OK;
-
-	DYNBUF_ADD3(&tooltip, " [", ctrl->LABEL, 0, NO_CONV, "]");
 
 
 	/* Button images depend error status & control type */
@@ -474,27 +473,20 @@ int ctrl_add_opt_btn(
 	}
 
 	/* Format button tooltip & CGI name */
-	if(ctrl->errmsg) DYNBUF_ADD3_BUF(&tooltip, " - ", ctrl->errmsg, NO_CONV, "");
-	if(ctrl->NOTES && *ctrl->NOTES) DYNBUF_ADD3(&tooltip, "\n\n", ctrl->NOTES, 0, NO_CONV, "");
-	if(b_button)
-	{
-		DYNBUF_ADD3(&tooltip, "\n\nCliquez pour plus d'informations sur [", ctrl->LABEL, 0, NO_CONV, "]");
-		if(STRCMPNUL(ctrl->TYPE, "_EVA_TITLE"))
-			DYNBUF_ADD_BUF(&cginame, ctrl->cginame, NO_CONV)
-		else
-			DYNBUF_ADD_BUF(&cginame, form->ctrl->cginame, NO_CONV);
-		*cginame->data = 'I';
-
-		if(put_html_button(cntxt, cginame->data, "Infos", 
-						image->data, imgsel->data, tooltip->data, 0, 4))
-			STACK_ERROR;
-	}
+	if(ctrl_get_label_img(cntxt, NULL, NULL, &label, NULL, &ctrl->attr, 0)) STACK_ERROR;
+	DYNBUF_ADD3(&label, " [", ctrl->LABEL, 0, NO_CONV, "]");
+	if(STRCMPNUL(ctrl->TYPE, "_EVA_TITLE"))
+		DYNBUF_ADD_BUF(&cginame, ctrl->cginame, NO_CONV)
 	else
-	{
-		if(put_html_image(cntxt, NULL, image->data, tooltip->data,
-							NULL, NULL, 0))
-			STACK_ERROR;
-	}
+		DYNBUF_ADD_BUF(&cginame, form->ctrl->cginame, NO_CONV);
+	*cginame->data = 'I';
+	if(put_html_button_sz(cntxt, cginame->data, NULL, 
+		image->data, imgsel->data,
+		label ? label->data : ctrl->LABEL, ctrl->NOTES,
+		ctrl->errmsg ? ctrl->errmsg->data : NULL,
+		"EVA_ToolTipBtn", 0, 0, 0, ~0UL, 6 | (!b_button & 1)))
+		STACK_ERROR;
+
 	RETURN_OK_CLEANUP;
 }
 #undef ERR_FUNCTION
@@ -505,19 +497,22 @@ int ctrl_add_opt_btn(
 ** Description : output HTML code for the label of a control
 *********************************************************************/
 #define ERR_FUNCTION "ctrl_put_label"
-#define ERR_CLEANUP 
+#define ERR_CLEANUP M_FREE(tmp)
 int ctrl_put_label(
 	EVA_context *cntxt,			/* in/out : execution context data */
 	EVA_ctrl *ctrl,	 			/* in : input control to process */
-	char *position				/* in : cell position */
+	char *position,				/* in : cell position */
+	int b_div	 				/* in : output enclosing DIV if 1 */
 ){
 	int b_opt = STRCMPNUL(ctrl->OPTIONBUTTON, "_EVA_NONE") != 0 && cntxt->opt_btn_mode != OptBtn_None;
 	int b_nobr = *CTRL_ATTR_VAL(LABEL_NOBR) == '1';
-	char *br_style = CTRL_ATTR_VAL(BORDER_STYLE);
+	int b_usediv = cntxt->b_usediv;
+	char *br_style = ctrl->BORDER_STYLE;
+	DynBuffer *tmp = NULL;
 	
 	/* Label color depends on error status if no option button */
 	char *labelcolor = (b_opt || ctrl->error < 1) ? ctrl->LABELFONTCOLOR :
-						ctrl->error < 2 ? "DD8800" : "DD0000";
+						ctrl->error < 2 ? "orange" : "red";
 
 	/* Handle unspecified row/col span */
 	if(!ctrl->LABELROWSPAN) ctrl->LABELROWSPAN = 1;
@@ -527,29 +522,12 @@ int ctrl_put_label(
 	if(put_html_format_pos(cntxt, position,
 		ctrl->LABELALIGN, ctrl->LABELVALIGN, ctrl->LABELWIDTH, ctrl->LABELHEIGHT,
 		ctrl->LABELBGCOLOR, ctrl->LABELBACKGROUND, ctrl->LABELCOLSPAN, ctrl->LABELROWSPAN,
-		ctrl->LABELFONTFACE, ctrl->LABELFONTSIZE, labelcolor, ctrl->LABEL_STYLE,
-		ctrl->LABELBOLD[0] == '1', ctrl->LABELITALIC[0] == '1', ctrl->LABELUNDERLINE[0] == '1', 0,
+		ctrl->LABELFONTFACE, ctrl->LABELFONTSIZE, labelcolor, dynbuf_concat_ws(&tmp, "EVA_Label", " ", ctrl->LABEL_STYLE),
+		ctrl->LABELBOLD[0] == '1', ctrl->LABELITALIC[0] == '1', ctrl->LABELUNDERLINE[0] == '1', b_nobr, NULL,
 		1)) STACK_ERROR;
 
-	/* Output <div> for shrink button */
-	if(!strncmp(br_style, add_sz_str("_EVA_SHRINKBTN")))
-		DYNBUF_ADD_STR(cntxt->form->html, "<div style='float:left'>");
-
-	/* Output label */
-	if(b_nobr) DYNBUF_ADD_STR(cntxt->form->html, "<nobr>");
-	if(!strcmp(ctrl->CONTROL, "_EVA_BUTTON"))
-	{
-		/* Output label as button for buttons */
-		int b_link = !strcmp(CTRL_ATTR_VAL(ACTION), "_EVA_HTTPLINK");
-		char *link = CTRL_ATTR_VAL(URL);
-		if(put_html_button(cntxt, b_link ? link : ctrl->cginame->data, ctrl->LABEL, NULL, NULL, ctrl->NOTES, 0, b_link ? 96 : 32)) STACK_ERROR;
-	}
-	else
-		DYNBUF_ADD(cntxt->form->html, ctrl->LABEL, 0, TO_HTML);
-
-	/* Output option button if applicable */
-	if(b_opt && ctrl_add_opt_btn(cntxt, ctrl)) STACK_ERROR;
-	if(b_nobr) DYNBUF_ADD_STR(cntxt->form->html, "</nobr>");
+	/* Output <div> if applicable */
+	if(b_div && !b_usediv) DYNBUF_ADD_STR(cntxt->form->html, "<div class=EVA_Div>");
 
 	/* Output shrink button if applicable */
 	if(!strncmp(br_style, add_sz_str("_EVA_SHRINKBTN")))
@@ -558,19 +536,59 @@ int ctrl_put_label(
 		char printbuf[1024];
 
 		DYNBUF_ADD3_CELL(cntxt->form->html,
-			"</div><div style='text-align:right;width:100%'><img onClick=ToggleMenu(this,",
+			"<img style='float:right' onClick=ToggleMenu(this,",
 			&ctrl->id, 0, 0, NO_CONV, ") title='Cliquez pour réduire' onMouseOver=SwapImg(this)");
 		dynbuf_print3(cntxt->form->html,
-			" src=/img/shrink_%s.gif img=/img/shrink_%s.gif img1=/img/shrink_%s_s.gif></div>", ud, ud, ud);
+			" src=/img/shrink_%s.gif img=/img/shrink_%s.gif img1=/img/shrink_%s_s.gif>", ud, ud, ud);
 	}
+
+	/* Output label */
+	if(!strcmp(ctrl->CONTROL, "_EVA_BUTTON"))
+	{
+		/* Output label as button for buttons */
+		int b_link = !strcmp(CTRL_ATTR_VAL(ACTION), "_EVA_HTTPLINK");
+		char *link = CTRL_ATTR_VAL(URL);
+		if(put_html_button(cntxt, b_link ? link : ctrl->cginame->data,
+									ctrl->LABEL, NULL, NULL, ctrl->NOTES, 0, b_link ? 96 : 32)) STACK_ERROR;
+	}
+	else
+		DYNBUF_ADD(cntxt->form->html, ctrl->LABEL, 0, TO_HTML);
+
+	/* Output option button if applicable */
+	if(b_opt && ctrl_add_opt_btn(cntxt, ctrl)) STACK_ERROR;
+	
+	/* Close <div> if applicable */
+	if(b_div && !b_usediv) DYNBUF_ADD_STR(cntxt->form->html, "</div>");
 
 	/* Output cell footer for label */
 	if(put_html_format_pos(cntxt, position,
 		ctrl->LABELALIGN, ctrl->LABELVALIGN, ctrl->LABELWIDTH, ctrl->LABELHEIGHT,
 		ctrl->LABELBGCOLOR, ctrl->LABELBACKGROUND, ctrl->LABELCOLSPAN, ctrl->LABELROWSPAN,
 		ctrl->LABELFONTFACE, ctrl->LABELFONTSIZE, labelcolor, ctrl->LABEL_STYLE,
-		ctrl->LABELBOLD[0] == '1', ctrl->LABELITALIC[0] == '1', ctrl->LABELUNDERLINE[0] == '1', 0,
+		ctrl->LABELBOLD[0] == '1', ctrl->LABELITALIC[0] == '1', ctrl->LABELUNDERLINE[0] == '1', b_nobr, NULL,
 		0)) STACK_ERROR;
+
+	RETURN_OK_CLEANUP;
+}
+#undef ERR_FUNCTION
+#undef ERR_CLEANUP
+
+/*********************************************************************
+** Function : ctrl_format_notes
+** Description : output control notes if applicable
+*********************************************************************/
+#define ERR_FUNCTION "ctrl_format_notes"
+#define ERR_CLEANUP 
+int ctrl_format_notes(				/* return : 0 on success, other on error */
+	EVA_context *cntxt,				/* in/out : execution context data */
+	EVA_ctrl *ctrl	 				/* in : control to process */
+){
+	/* Handle control notes */
+	char *mode = CTRL_ATTR_VAL(HELPTEXT);
+	if(ctrl->NOTES && *ctrl->NOTES && (!strcmp(mode, "_EVA_ALWAYS") || !strcmp(mode, "_EVA_EDIT") && cntxt->form->step == HtmlEdit))
+	{
+		DYNBUF_ADD3(cntxt->form->html, "<div class=EVA_Notes>", ctrl->NOTES, 0, TO_HTML, "</div>");
+	}
 
 	RETURN_OK_CLEANUP;
 }
@@ -582,39 +600,34 @@ int ctrl_put_label(
 ** Description : output control position & format
 *********************************************************************/
 #define ERR_FUNCTION "ctrl_format_cell"
-#define ERR_CLEANUP 
+#define ERR_CLEANUP M_FREE(tmp)
 int ctrl_format_cell(				/* return : 0 on success, other on error */
 	EVA_context *cntxt,				/* in/out : execution context data */
 	EVA_ctrl *ctrl,	 				/* in : control to process */
-	int b_head		 				/* in : output header if 1, footer else */
+	int b_head,		 				/* in : output header if 1, footer else */
+	int b_div		 				/* in : output enclosing DIV if 1 */
 ){
-	if(b_head)
-	{
-		/* Output cell header for control */
-		if(put_html_format_pos(cntxt, ctrl->POSITION,
-							ctrl->ALIGN, ctrl->VALIGN, ctrl->WIDTH, ctrl->HEIGHT,
-							ctrl->BGCOLOR, ctrl->BACKGROUND, ctrl->COLSPAN, ctrl->ROWSPAN,
-							ctrl->FONTFACE, ctrl->FONTSIZE, ctrl->FONTCOLOR, ctrl->CELL_STYLE,
-							ctrl->BOLD[0] == '1', ctrl->ITALIC[0] == '1', ctrl->UNDERLINE[0] == '1', 0, b_head)) 
-			STACK_ERROR;
-	}
-	else
-	{
-		/* Handle control notes */
-		char *mode = CTRL_ATTR_VAL(HELPTEXT);
-		if(ctrl->NOTES && *ctrl->NOTES && (!strcmp(mode, "_EVA_ALWAYS") || !strcmp(mode, "_EVA_EDIT") && cntxt->form->step == HtmlEdit))
-		{
-			DYNBUF_ADD3(cntxt->form->html, "<div class=EVANotes>", ctrl->NOTES, 0, TO_HTML, "</div>");
-		}
+	int b_usediv = cntxt->b_usediv;
+	DynBuffer *tmp = NULL;
 
-		/* Output cell footer for control */
-		if(put_html_format_pos(cntxt, ctrl->POSITION,
-							ctrl->ALIGN, ctrl->VALIGN, ctrl->WIDTH, ctrl->HEIGHT,
-							ctrl->BGCOLOR, ctrl->BACKGROUND, ctrl->COLSPAN, ctrl->ROWSPAN,
-							ctrl->FONTFACE, ctrl->FONTSIZE, ctrl->FONTCOLOR, ctrl->CELL_STYLE,
-							ctrl->BOLD[0] == '1', ctrl->ITALIC[0] == '1', ctrl->UNDERLINE[0] == '1', 0, b_head)) 
-			STACK_ERROR;
-	}
+	/* Enclose control in DIV if applicable */
+	if(b_div && !b_head && !b_usediv) DYNBUF_ADD_STR(cntxt->form->html, "</div>");
+
+	/* Handle control notes */
+	if(!b_head && ctrl_format_notes(cntxt, ctrl)) STACK_ERROR;
+
+	/* Output cell header / footer for control */
+	if(put_html_format_pos(cntxt, ctrl->POSITION,
+						ctrl->ALIGN, ctrl->VALIGN, ctrl->WIDTH, ctrl->HEIGHT,
+						ctrl->BGCOLOR, ctrl->BACKGROUND, ctrl->COLSPAN, ctrl->ROWSPAN,
+						ctrl->FONTFACE, ctrl->FONTSIZE, ctrl->FONTCOLOR,
+						dynbuf_concat_ws(&tmp, ctrl->ctrlclass ? ctrl->ctrlclass : "EVA_Ctrl", " ", ctrl->CELL_STYLE),
+						ctrl->BOLD[0] == '1', ctrl->ITALIC[0] == '1', ctrl->UNDERLINE[0] == '1',
+						*CTRL_ATTR_VAL(NOBR) == '1', NULL, b_head)) 
+		STACK_ERROR;
+
+	/* Enclose control in DIV if applicable */
+	if(b_div && b_head && !b_usediv) DYNBUF_ADD_STR(cntxt->form->html, "<div class=EVA_CtrlDiv>");
 
 	RETURN_OK_CLEANUP;
 }
@@ -626,13 +639,21 @@ int ctrl_format_cell(				/* return : 0 on success, other on error */
 ** Description : output control position & format with label & notes if needed
 *********************************************************************/
 #define ERR_FUNCTION "ctrl_format_pos"
-#define ERR_CLEANUP 
+#define ERR_CLEANUP M_FREE(tmp)
 int ctrl_format_pos(				/* return : 0 on success, other on error */
 	EVA_context *cntxt,				/* in/out : execution context data */
 	EVA_ctrl *ctrl,	 				/* in : control to process */
 	int b_head		 				/* in : output header if 1, footer else */
 ){
+	char *pos = ctrl->POSITION;
+	int b_samecell = !strcmp("_EVA_TOP", ctrl->LABELPOS) || !strcmp("_EVA_BOTTOM", ctrl->LABELPOS);
+	int b_right = !strcmp("_EVA_RIGHT", ctrl->LABELPOS) || !strcmp("_EVA_BOTTOM", ctrl->LABELPOS);
+	int b_div = *CTRL_ATTR_VAL(USE_DIV) == '1' && strcmp(pos, "_EVA_SameColumn");
+	DynBuffer *tmp = NULL;
 	if(!cntxt->form->html) RETURN_OK;
+	if(!ctrl->ctrlclass) ctrl->ctrlclass = "EVA_Ctrl";
+
+	/* Handle debug info */
 	if(cntxt->debug & DEBUG_HTML && b_head)
 	{
 		DYNBUF_ADD3(cntxt->form->html, "\n<!--- Start ", ctrl->CONTROL, 0, NO_CONV, " / ");
@@ -640,138 +661,86 @@ int ctrl_format_pos(				/* return : 0 on success, other on error */
 		DYNBUF_ADD3(cntxt->form->html, " / ", ctrl->LABEL, 0, NO_CONV, " -->\n");
 	}
 
-	/* Handle NOBR */
-	if(!b_head && ctrl->NOBR && *ctrl->NOBR == '1') DYNBUF_ADD_STR(cntxt->form->html, "</nobr>");
 
-	/* Handle label on right side of control */
-	if(!strcmp("_EVA_RIGHT", ctrl->LABELPOS))
-	{
-		ctrl->LABELROWSPAN = ctrl->ROWSPAN;
-		if(b_head)
-		{
-			/* Output cell header for control */
-			if(!ctrl->ALIGN[0]) ctrl->ALIGN = "right";
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
-		}
-		else
-		{
-			/* Output cell footer for control */
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
-
-			/* Output label */
-			if(!ctrl->LABELALIGN[0]) ctrl->LABELALIGN = "left";
-			if(!ctrl->LABELVALIGN[0]) ctrl->LABELVALIGN = ctrl->VALIGN;
-			if(ctrl_put_label(cntxt, ctrl, "_EVA_NewColumn")) STACK_ERROR;
-		}
-	}
-	/* Handle label on top of control */
-	else if(!strcmp("_EVA_TOP", ctrl->LABELPOS))
-	{
-		if(b_head)
-		{
-			if(!ctrl->LABELALIGN[0]) ctrl->LABELALIGN = ctrl->ALIGN;
-			if(!ctrl->COLSPAN) ctrl->COLSPAN = 2;
-
-			/* Output cell header for control & label */
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
-
-			/* Output label in table */
-			if(!ctrl->LABELVALIGN[0]) ctrl->LABELVALIGN = "bottom";
-			if(put_html_table_header(cntxt, NULL, "100%", NULL,
-				ctrl->LABELBGCOLOR, ctrl->LABELBACKGROUND,0, 0, 0, NULL, NULL, NULL)) STACK_ERROR;
-			if(ctrl_put_label(cntxt, ctrl, "_EVA_NewColumn")) STACK_ERROR;
-			DYNBUF_ADD_STR(cntxt->form->html, "</tr></table>");
-
-			/* Enclose control in DIV if applicable */
-			if(*CTRL_ATTR_VAL(USE_DIV) == '1')
-			{
-				DYNBUF_ADD_STR(cntxt->form->html, "<table");
-				if(*ctrl->TABLE_STYLE) DYNBUF_ADD3(cntxt->form->html, " class=", ctrl->TABLE_STYLE, 0, NO_CONV, "");
-				DYNBUF_ADD_STR(cntxt->form->html, "><tr><td>");
-			}
-		}
-		else
-		{
-			/* Output cell footer for control */
-			if(*CTRL_ATTR_VAL(USE_DIV) == '1') DYNBUF_ADD_STR(cntxt->form->html, "</td></tr></table>");
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
-		}
-	}
-	/* Handle label on bottom of control */
-	else if(!strcmp("_EVA_BOTTOM", ctrl->LABELPOS))
-	{
-		if(b_head)
-		{
-			if(!ctrl->LABELALIGN[0]) ctrl->LABELALIGN = ctrl->ALIGN;
-			if(!ctrl->COLSPAN) ctrl->COLSPAN = 2;
-
-			/* Output cell header for control & label */
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
-
-			/* Enclose control in DIV if applicable */
-			if(*CTRL_ATTR_VAL(USE_DIV) == '1')
-			{
-				DYNBUF_ADD_STR(cntxt->form->html, "<table");
-				if(*ctrl->TABLE_STYLE) DYNBUF_ADD3(cntxt->form->html, " class=", ctrl->TABLE_STYLE, 0, NO_CONV, "");
-				DYNBUF_ADD_STR(cntxt->form->html, "><tr><td>");
-			}
-		}
-		else
-		{
-			if(*CTRL_ATTR_VAL(USE_DIV) == '1') DYNBUF_ADD_STR(cntxt->form->html, "</td></tr></table>");
-
-			/* Output label in table */
-			if(!ctrl->LABELVALIGN[0]) ctrl->LABELVALIGN = "top";
-			if(put_html_table_header(cntxt, NULL, "100%", NULL, ctrl->LABELBGCOLOR, ctrl->LABELBACKGROUND,0, 0, 0, NULL, NULL, NULL)) STACK_ERROR;
-			if(ctrl_put_label(cntxt, ctrl, "_EVA_NewColumn")) STACK_ERROR;
-			DYNBUF_ADD_STR(cntxt->form->html, "</tr></table>");
-
-			/* Output cell footer for control & label */
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
-		}
-	}
 	/* Handle no label */
-	else if(!strcmp("_EVA_NONE", ctrl->LABELPOS))
+	if(!strcmp("_EVA_NONE", ctrl->LABELPOS))
+	{
+		/* Output cell header / footer for control */
+		if(!ctrl->COLSPAN) ctrl->COLSPAN = 2;
+		if(ctrl_format_cell(cntxt, ctrl, b_head, b_div)) STACK_ERROR;
+	}
+	/* Handle composite mode : EVA_Ctrl / EVA_Label+EVA_Content */
+	else if(cntxt->b_usediv == 2 || b_samecell && !cntxt->b_usediv)
 	{
 		if(b_head)
 		{
-			/* Output cell header for control */
+			if(!ctrl->LABELALIGN[0]) ctrl->LABELALIGN = ctrl->ALIGN;
 			if(!ctrl->COLSPAN) ctrl->COLSPAN = 2;
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
+
+			/* Output cell header for control & label */
+			if(put_html_format_pos(cntxt, pos,
+								ctrl->ALIGN, ctrl->VALIGN, ctrl->WIDTH, 0, 0, 0, ctrl->COLSPAN, ctrl->ROWSPAN, 0, 0, 0,
+								dynbuf_concat_ws(&tmp, ctrl->ctrlclass, " ", ctrl->CELL_STYLE), 0, 0, 0, 0, NULL, b_head)) 
+				STACK_ERROR;
+
+			/* Output label on top */
+			if(!b_right && ctrl_put_label(cntxt, ctrl, "_EVA_SameColumn", 0)) STACK_ERROR;
+
+			/* Output DIV header for control content */
+			if(put_html_format_pos(cntxt, "_EVA_SameColumn",
+								0, 0, 0, ctrl->HEIGHT,
+								ctrl->BGCOLOR, ctrl->BACKGROUND, 0, 0,
+								ctrl->FONTFACE, ctrl->FONTSIZE, ctrl->FONTCOLOR, "EVA_Content",
+								ctrl->BOLD[0] == '1', ctrl->ITALIC[0] == '1', ctrl->UNDERLINE[0] == '1',
+								*CTRL_ATTR_VAL(NOBR) == '1', NULL, b_head)) 
+				STACK_ERROR;
 		}
 		else
 		{
+			/* Output DIV footer for control content */
+			DYNBUF_ADD_STR(cntxt->form->html, "</div>");
+
+			/* Output label at bottom */
+			if(b_right && ctrl_put_label(cntxt, ctrl, "_EVA_SameColumn", 0)) STACK_ERROR;
+
 			/* Output cell footer for control */
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
+			if(ctrl_format_cell(cntxt, ctrl, 0, 0)) STACK_ERROR;
 		}
 	}
-	/* Handle label on left side of control */
+	/* Handle simple mode : EVA_Label+EVA_Content */
 	else
 	{
-		ctrl->LABELROWSPAN = ctrl->ROWSPAN;
-		if(b_head)
+
+		/* Handle standard / DIV flow */
+		if(cntxt->b_usediv)
 		{
-			char *pos = ctrl->POSITION;
-
-			/* Output label */
-			if(!ctrl->LABELALIGN[0]) ctrl->LABELALIGN = "right";
-			if(!ctrl->LABELVALIGN[0]) ctrl->LABELVALIGN = ctrl->VALIGN;
-			if(ctrl_put_label(cntxt, ctrl, pos)) STACK_ERROR;
-
-			/* Output cell header for control */
 			ctrl->POSITION = "_EVA_NewColumn";
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
-			ctrl->POSITION = pos;
 		}
 		else
 		{
-			/* Output cell footer for control */
-			if(ctrl_format_cell(cntxt, ctrl, b_head)) STACK_ERROR;
+			if(!ctrl->LABELROWSPAN) ctrl->LABELROWSPAN = ctrl->ROWSPAN;
+			if(!ctrl->LABELVALIGN[0]) ctrl->LABELVALIGN = ctrl->VALIGN;
+			if(!ctrl->ALIGN[0]) ctrl->ALIGN = b_right ? "right" : "left";
+			if(!ctrl->LABELALIGN[0]) ctrl->LABELALIGN = b_right ? "left" : "right";
+		}
+
+		/* Output label on left side of control (before) */
+		if(b_head && !b_right)
+		{
+			if(ctrl_put_label(cntxt, ctrl, pos, b_div)) STACK_ERROR;
+			ctrl->POSITION = "_EVA_NewColumn";
+		}
+
+		/* Output cell header / footer for control */
+		if(ctrl_format_cell(cntxt, ctrl, b_head, b_div)) STACK_ERROR;
+		ctrl->POSITION = pos;
+
+		/* Output label on right side of control (after) */
+		if(!b_head && b_right)
+		{
+			if(ctrl_put_label(cntxt, ctrl, "_EVA_NewColumn", b_div)) STACK_ERROR;
 		}
 	}
-
-	/* Handle NOBR */
-	if(b_head && ctrl->NOBR && *ctrl->NOBR == '1') DYNBUF_ADD_STR(cntxt->form->html, "<nobr>");
 
 	if(cntxt->debug & DEBUG_HTML && !b_head)
 	{
@@ -795,12 +764,16 @@ int ctrl_put_table_header(				/* return : 0 on success, other on error */
 	EVA_context *cntxt,					/* in/out : execution context data */
 	EVA_ctrl *ctrl						/* in : control to process */
 ){
-	char *br_style = CTRL_ATTR_VAL(BORDER_STYLE);
+	char *br_style = ctrl->BORDER_STYLE;
 	char attr[64] = {0};
+	char *css = NULL;
 
 	/* Handle shrink button */
 	if(!strncmp(br_style, add_sz_str("_EVA_SHRINKBTN")))
-		snprintf(add_sz_str(attr), "id=Mnu%s%s", dyntab_val(&ctrl->id, 0, 0), br_style[14] ? " style='display:none'" : "");
+	{
+		snprintf(add_sz_str(attr), "id=Mnu%s", dyntab_val(&ctrl->id, 0, 0));
+		if(br_style[14]) css = "display:none;";
+	}
 
 	/* Output HTML debug info if applicable */
 	if(cntxt->debug & DEBUG_HTML)
@@ -817,11 +790,12 @@ int ctrl_put_table_header(				/* return : 0 on success, other on error */
 			ctrl->TABLEHEIGHT,
 			ctrl->TABLEBGCOLOR,
 			ctrl->TABLEBACKGROUND,
+			NULL,
 			atoi(CTRL_ATTR_VAL(CELLSPACING)),
 			atoi(CTRL_ATTR_VAL(CELLPADDING)),
 			ctrl->BORDER,
 			ctrl->TABLERULES,
-			ctrl->TABLE_STYLE, attr))
+			ctrl->TABLE_STYLE, attr, css))
 		STACK_ERROR;
 
 	RETURN_OK_CLEANUP;
@@ -923,9 +897,6 @@ int put_showhelp(					/* return : 0 on success, other on error */
 ){
 	EVA_form *form = cntxt->form;
 
-	/* Return if javascript is not enabled */
-	if(!cntxt->jsenabled) RETURN_OK;
-
 	/* Output ShowHelp call */
 	DYNBUF_ADD_STR(html, " onMouseOver=ShowHelp(this)");
 
@@ -971,7 +942,7 @@ size_t build_open_btn_name(				/* return : length of opname */
 ** Description : output an open button
 *********************************************************************/
 #define ERR_FUNCTION "html_put_open_btn"
-#define ERR_CLEANUP M_FREE(tooltip)
+#define ERR_CLEANUP
 int html_put_open_btn(					/* return : 0 on success, other on error */
 	EVA_context *cntxt,					/* in/out : execution context data */
 	char *opname,						/* out : button CGI name */
@@ -983,36 +954,26 @@ int html_put_open_btn(					/* return : 0 on success, other on error */
 	unsigned long id_form,				/* in : form id to open */
 	unsigned long id_obj,				/* in : object id to open */
 	int loc,							/* in : opened window location */
-	int b_disabled,						/* in : button is disabled if not 0 */
+	char *style,						/* in : CSS class for button */
+	int htmode,							/* in : mode for put_html_button */
 	int mode							/* in : open mode */
 ){
- 	DynBuffer *tooltip = NULL;
 	char _opname[64];
-	char *action = b_disabled ? "Vous n'avez pas accès à cette fiche" :
-		(!id_form && !id_obj) ? "Cliquez pour plus d'informations sur la fiche" :
-								"Cliquez pour ouvrir la fiche";
+	int b_disabled = htmode & 1;
+	char *errmsg = b_disabled ? "Accès interdit" : NULL;
+
 	/* Build button name if applicable */
 	if(!opname) opname = _opname;
 	build_open_btn_name(cntxt, opname, id_form, id_obj, loc, mode);
-
-	/* Build button tooltip */
-	DYNBUF_ADD_BUF(&tooltip, label, NO_CONV);
-	if(id_form && !id_obj)
-		DYNBUF_ADD_STR(&tooltip, " (Nouvelle fiche)")
-	else if(cntxt->b_admin)
-		DYNBUF_ADD3_INT(&tooltip, " n° ", (!id_form && !id_obj) ? DYNTAB_TOUL(&cntxt->form->id_obj) : id_obj, "");
-	if(objname) DYNBUF_ADD3_BUF(&tooltip, " : ", objname, NO_CONV, "");
-	if(notes && !b_disabled) DYNBUF_ADD3_BUF(&tooltip, "\n\n", notes, NO_CONV, "\n");
-	if(action && !b_disabled) DYNBUF_ADD3(&tooltip, "\n", action, 0, NO_CONV, "");
-	if(b_disabled) DYNBUF_ADD_STR(&tooltip, "\n")
+	if(!id_form && !id_obj && cntxt->form && cntxt->form->objdata.cell)
+		id_obj = cntxt->form->objdata.cell->IdObj;
 		
 	/* Output button */
-	if(put_html_button(cntxt, opname, NULL,
+	if(put_html_button_sz(cntxt, opname, label ? label->data : NULL,
 				img ? img->data : "_eva_open_small.gif", 
 				(img && imgsel) ? imgsel->data : "_eva_open_small_s.gif",
-				tooltip ? tooltip->data : NULL, 0, b_disabled | 4))
+				objname ? objname->data : NULL, notes ? notes->data : NULL, errmsg, style, 0, 0, 0, id_obj, htmode | 4))
 			STACK_ERROR;
-
 	RETURN_OK_CLEANUP;
 }
 #undef ERR_FUNCTION
@@ -1027,7 +988,6 @@ int html_put_open_btn(					/* return : 0 on success, other on error */
 					DYNTAB_FREE(formdata); \
 					M_FREE(formname); \
 					M_FREE(objname); \
-					M_FREE(objtitle); \
 					M_FREE(fnotes); \
 					M_FREE(notes); \
 					M_FREE(img); \
@@ -1049,7 +1009,6 @@ int ctrl_add_symbol_btn(				/* return : 0 on success, other on error */
 	DynTable formdata = {0};
 	DynBuffer *formname = NULL;
 	DynBuffer *objname = NULL;
-	DynBuffer *objtitle = NULL;
 	DynBuffer *notes = NULL;
 	DynBuffer *fnotes = NULL;
 	DynBuffer *img = NULL;
@@ -1104,7 +1063,7 @@ int ctrl_add_symbol_btn(				/* return : 0 on success, other on error */
 		unsigned long id_form = DYNTAB_TOULRC(&formstamp, i, 0), i_fc;
 		int access = AccessNone;
 		if(qry_obj_label(cntxt, &formname, &fnotes,
-				b_label ? &objname : NULL, NULL, b_tooltip ? &notes : NULL,
+				&objname, NULL, b_tooltip ? &notes : NULL,
 				&img, &imgsel, &i_fc, id_form, data, beg)) CLEAR_ERROR;
 		if(i_fc >= cntxt->nbfc) continue;
 
@@ -1156,11 +1115,11 @@ int ctrl_add_symbol_btn(				/* return : 0 on success, other on error */
 		/* Output button */
 		if(b_button)
 		{
-			if(html_put_open_btn(cntxt, opname, formname, 
-							b_label ? NULL : objtitle, !b_tooltip ? NULL : b_label ? fnotes : notes,
+			if(html_put_open_btn(cntxt, opname, objname, formname, 
+							b_tooltip ? notes : fnotes,
 							img, imgsel, 
-							id_form, objdata ? objdata->IdObj : 0, loc,
-							access == AccessNone, atoi(CTRL_ATTR_VAL(OPEN_MODE))))
+							id_form, objdata ? objdata->IdObj : 0, loc, NULL,
+							access == AccessNone ? 1 : 0, atoi(CTRL_ATTR_VAL(OPEN_MODE))))
 				STACK_ERROR;
 		}
 	}
@@ -1186,7 +1145,10 @@ int ctrl_add_symbol_btn(				/* return : 0 on success, other on error */
 		if(formaccess == AccessNone)
 			DYNBUF_ADD_BUF(html, htmlabel, NO_CONV)
 		else 
-			if(put_html_button(cntxt, opname, htmlabel->data, NULL, NULL, txtnotes ? txtnotes->data : NULL, 0, 32))
+		if(put_html_button_sz(cntxt,
+				opname, htmlabel->data, NULL, NULL,
+				formname ? formname->data : NULL, txtnotes ? txtnotes->data : NULL, NULL, NULL, 0, 0, 0,
+				objdata ? objdata->IdObj : ~0UL, 32 | 256))
 			STACK_ERROR;
 		if(bg_color && *bg_color != '*') DYNBUF_ADD_STR(html, "</td>");
 	}

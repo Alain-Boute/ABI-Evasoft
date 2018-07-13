@@ -524,14 +524,14 @@ int ctrl_add_input(					/* return : 0 on success, other on error */
 			DYNBUF_ADD3(html, 
 				"<td colspan=2><hr></td></tr><tr>"
 				"<td align=right valign=top><font face='", ctrl->FONTFACE, 0, NO_CONV, "'>");
-			if(ctrl_put_label(cntxt, ctrl, "_EVA_SameCell")) STACK_ERROR; 
+			if(ctrl_put_label(cntxt, ctrl, "_EVA_SameCell", 0)) STACK_ERROR; 
 			if(form->step == HtmlEdit || ctrl->error > 1)
 			{
 				DYNBUF_ADD_STR(form->html, "<br><font size=-1>");
 				if(ctrl->b_modified) DYNBUF_ADD_STR(html, "Champ modifié");
 				if(ctrl->errmsg)
 				{
-					if(form->step != HtmlEdit) DYNBUF_ADD_STR(html, " Vous n'avec pas accès à ce champ en modification");
+					if(form->step != HtmlEdit) DYNBUF_ADD_STR(html, " Vous n'avez pas accès à ce champ en modification");
 					if(ctrl->b_modified || form->step != HtmlEdit) DYNBUF_ADD_STR(html, "<br>");
 					DYNBUF_ADD3_BUF(html, "<font color=#FF0000><b>", ctrl->errmsg, TO_HTML, "</font></b>");
 				}

@@ -18,27 +18,30 @@
 *********************************************************************/
 int put_html_button_sz(					/* return : 0 on success, other on error */
 	EVA_context *cntxt,					/* in/out : execution context data */
-	char *name,	 						/* in : input name */
-	char *value,					 	/* in : input click value */
-	char *img,	 						/* in : image file */
-	char *img1,							/* in : image displayed when mouse over  */
-	char *alt,	 						/* in : tooltip text */
+	char *name,	 						/* in : input name or href location */
+	char *label,					 	/* in : button label */
+	char *im,	 						/* in : image file */
+	char *im1,							/* in : image displayed when mouse over  */
+	char *tooltip,					 	/* in : first line for tooltip */
+	char *notes,	 					/* in : tooltip text */
+	char *errmsg,	 					/* in : tooltip error message */
 	char *style, 						/* in : CSS style class */
 	unsigned long width,				/* in : image width */
 	unsigned long height,				/* in : image height */
 	int border,						 	/* in : border size */
+	unsigned long id_obj,				/* in : object Id to include in tooltip */
 	int mode						 	/* in : display mode - bit mask
 											bit 0 : button disabled if set
 											bit 1 : dont use JavaScript if set
 											bit 2 : aligned on text if set
 											bit 3 : output label if set
 											bit 4 : label position is left if set
-											bit 5 : omit image if set
+											bit 5 : output anchor style button (omit image) if set
 											bit 6 : output anchor (use href) if set
 											bit 7 : use checkbox handler if set */
 );
 #define put_html_button(cntxt, name, value, im, im1, alt, border, mode) \
-	put_html_button_sz(cntxt, name, value, im, im1, alt, NULL, 0, 0, border, mode)
+	put_html_button_sz(cntxt, name, value, im, im1, NULL, alt, NULL, NULL, 0, 0, border, ~0UL, mode)
 
 /*********************************************************************
 ** Function : ctrl_add_button

@@ -345,6 +345,7 @@ typedef struct _EVA_ctrl
 	unsigned long i_brother;	/* next brother control index */
 	unsigned long i_handler;	/* handler index in ctrl_handlers */
 	int storage;				/* DB storage mode : 0=>none, 1=>IdValue, 3=>IdRelObj */
+	char *ctrlclass;			/* base CSS class */
 	DynBuffer *cginame;			/* CGI input base name */
 	DynTable attr;				/* control attributes */
 	DynTable val;				/* control current values */
@@ -418,11 +419,11 @@ typedef struct _EVA_ctrl
 	char *TABLERULES;
 	char *TABLEBGCOLOR;
 	char *TABLEBACKGROUND;
-	unsigned long BORDER;
-	char *CTRL_STYLE;
+	char *BORDER;
 	char *CELL_STYLE;
 	char *LABEL_STYLE;
 	char *TABLE_STYLE;
+	char *BORDER_STYLE;
 }
 	EVA_ctrl;
 
@@ -688,6 +689,7 @@ typedef struct _EVA_context
  	DynBuffer *focus1;			/* CGI name of 1st control to set focus on */
  	DynBuffer *focus2;			/* CGI name of 2nd control to set focus on */
  	DynBuffer *focus3;			/* CGI name of 3rd control to set focus on */
+	int b_usediv;				/* do not use table model if 1 */
 
 /* Static data to hold form info cache - TODO : handle dynamic size */
 #define FORM_CACHE_SIZE 100

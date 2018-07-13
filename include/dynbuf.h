@@ -93,6 +93,17 @@ int dynbuf_add3_int(		/* return : 0 if Ok, other on error */
 );
 
 /*********************************************************************
+** Function : dynbuf_concat_ws
+** Description : concat strings in a buffer
+*********************************************************************/
+char *dynbuf_concat_ws(				/* return : buffer contents or NULL if empty */
+	DynBuffer **buf,	 			/* in/out : buffer to concat */
+	char *str1,		 				/* in : string to concat */
+	char *sep,		 				/* in : separator */
+	char *str2		 				/* in : string to concat */
+);
+
+/*********************************************************************
 ** Macro : add_sz_str
 ** Description : stands for string const and string const length
 *********************************************************************/

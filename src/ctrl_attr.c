@@ -37,6 +37,7 @@ int ctrl_set_format_attr(			/* return : 0 on success, other on error */
 	ctrl->ROWSPAN = strtoul(CTRL_ATTR_VAL(ROWSPAN), NULL, 10);
 	ctrl->LINES = strtoul(CTRL_ATTR_VAL(LINES), NULL, 10);
 	ctrl->COLUMNS = strtoul(CTRL_ATTR_VAL(COLUMNS), NULL, 10);
+	CTRL_ATTR_GETFORM(BORDER_STYLE);
 	
 	/* Get cell modifiers */
 	CTRL_ATTR_GET(ALIGN);
@@ -44,8 +45,8 @@ int ctrl_set_format_attr(			/* return : 0 on success, other on error */
 	CTRL_ATTR_GET(WIDTH);
 	CTRL_ATTR_GET(HEIGHT);
 	CTRL_ATTR_GET(NOBR);
-	CTRL_ATTR_GETFORM(BGCOLOR);
-	CTRL_ATTR_GETFORM(BACKGROUND);
+	CTRL_ATTR_GET(BGCOLOR);
+	CTRL_ATTR_GET(BACKGROUND);
 
 	/* Get font modifiers */
 	CTRL_ATTR_GETFORM(FONTFACE);
@@ -56,8 +57,7 @@ int ctrl_set_format_attr(			/* return : 0 on success, other on error */
 	CTRL_ATTR_GETFORM(UNDERLINE);
 
 	/* Get style attributes */
-	CTRL_ATTR_GET(CTRL_STYLE);
-	CTRL_ATTR_GETFORM(CELL_STYLE);
+	CTRL_ATTR_GET(CELL_STYLE);
 	CTRL_ATTR_GETFORM(LABEL_STYLE);
 	CTRL_ATTR_GET(TABLE_STYLE);
 
@@ -86,7 +86,7 @@ int ctrl_set_format_attr(			/* return : 0 on success, other on error */
 	CTRL_ATTR_GET(TABLERULES);
 	CTRL_ATTR_GET(TABLEBGCOLOR);
 	CTRL_ATTR_GET(TABLEBACKGROUND);
-	ctrl->BORDER = strtoul(CTRL_ATTR_VAL(BORDER), NULL, 10);
+	ctrl->BORDER = CTRL_ATTR_VAL(BORDER);
 
 	RETURN_OK_CLEANUP;
 }

@@ -28,6 +28,7 @@ typedef struct _EVA_sendmail
 	DynTable att;					/* attached files */
 	DynBuffer *txtbody;				/* mesage body */
 	DynBuffer *txtsubj;				/* mesage subject */
+	DynBuffer *cmd;					/* BLAT shell command */
 	int b_html;						/* txtbody is HTML format if not 0 */
 	int b_done;						/* email was succesfully sent if not 0 */
 	char *err;						/* error message */
@@ -49,13 +50,16 @@ void sendmail_free(
 	DYNTAB_FREE(sm->att);
 	M_FREE(sm->txtsubj);
 	M_FREE(sm->txtbody);
-	chdir_user_doc(cntxt);
-	remove("dst.txt");
-	remove("cpy.txt");
-	remove("hid.txt");
-	remove("body.txt");
-	remove("err.txt");
-	remove("res.txt");
+	M_FREE(sm->cmd);
+	if(!sm->err) {
+		chdir_user_doc(cntxt);
+		remove("dst.txt");
+		remove("cpy.txt");
+		remove("hid.txt");
+		remove("body.txt");
+		remove("err.txt");
+		remove("res.txt");
+	}
 }
 
 /*********************************************************************
@@ -269,8 +273,7 @@ int file_adr_dest(					/* return : 0 on success, other on error */
 ** Description : actually send a prepared email
 *********************************************************************/
 #define ERR_FUNCTION "send_mail"
-#define ERR_CLEANUP	M_FREE(cmd); \
-					DYNTAB_FREE(data); \
+#define ERR_CLEANUP	DYNTAB_FREE(data); \
 					DYNTAB_FREE(res)
 int send_mail(						/* return : 0 on success, other on error */
 	EVA_context *cntxt,				/* in/out : execution context data */
@@ -278,7 +281,6 @@ int send_mail(						/* return : 0 on success, other on error */
 ){
 	EVA_form *form = cntxt->form;
 	EVA_ctrl *ctrl = form->ctrl + sm->i_ctrl;
-	DynBuffer *cmd = NULL;
 	DynTable data = {0};
 	DynTable res = {0};
 	FILE *f = NULL;
@@ -299,21 +301,21 @@ int send_mail(						/* return : 0 on success, other on error */
 	fclose(f);
 
 	/* Build BLAT command : exe, body & sender */
-	DYNBUF_ADD3(&cmd, "", cntxt->path, 0, NO_CONV, DD "BLAT.EXE body.txt -debug -noh2");
-	if(sm->b_html) DYNBUF_ADD_STR(&cmd, " -html");
-	DYNBUF_ADD3_CELLP(&cmd, " -mailfrom ", sm->from, NO_CONV, "");
+	DYNBUF_ADD3(&sm->cmd, "", cntxt->path, 0, NO_CONV, DD "BLAT.EXE body.txt -debug -noh2");
+	if(sm->b_html) DYNBUF_ADD_STR(&sm->cmd, " -html");
+	DYNBUF_ADD3_CELLP(&sm->cmd, " -mailfrom ", sm->from, NO_CONV, "");
 
 	/* Build BLAT command : files with destination emails */
-	if( file_adr_dest(cntxt, &cmd, &sm->dst, "dst.txt", "tf") ||
-		file_adr_dest(cntxt, &cmd, &sm->cpy, "cpy.txt", "cf") ||
-		file_adr_dest(cntxt, &cmd, &sm->hid, "hid.txt", "bf"))
+	if( file_adr_dest(cntxt, &sm->cmd, &sm->dst, "dst.txt", "tf") ||
+		file_adr_dest(cntxt, &sm->cmd, &sm->cpy, "cpy.txt", "cf") ||
+		file_adr_dest(cntxt, &sm->cmd, &sm->hid, "hid.txt", "bf"))
 		STACK_ERROR;
 
 	/* Build BLAT command : subject */
-	DYNBUF_ADD3_BUF(&cmd, " -s \"", sm->txtsubj, TO_SYSCMD, "\" >res.txt 2>err.txt");
+	DYNBUF_ADD3_BUF(&sm->cmd, " -s \"", sm->txtsubj, TO_SYSCMD, "\" >res.txt 2>err.txt");
 
 	/* Launch BLAT command */
-	err = system(cmd->data);
+	err = system(sm->cmd->data);
 	stat("err.txt", &fs);
 
 	/* Handle error */
